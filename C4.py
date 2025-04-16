@@ -16,7 +16,7 @@ args = parser.parse_args()
 w3 = Web3(Web3.HTTPProvider(args.rpc_url))
 w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 account = w3.eth.account.from_key(args.private_key)
-contract_address = w3.toChecksuAddress(args.token_address)
+contract_address = w3.toChecksumAddress(args.token_address)
 victim_address = w3.toChecksumAddress(args.victim_address)
 attacker_address = account.address
 
